@@ -34,6 +34,7 @@
 // base64 library is not lost on me.
 #![doc = concat!("[graph-png]: data:image/png;base64,", include_str!("../images/graph.png.base64"))]
 #![feature(array_chunks)]
+#![feature(array_windows)]
 #![feature(portable_simd)]
 
 use std::simd::LaneCount;
@@ -148,34 +149,18 @@ where
   out.reserve(encoded_len(data.len()) + N);
   let mut raw_out = out.as_mut_ptr_range().end;
 
-  // Can't use `[u8]::chunks` here, because we want 32-byte windows so we can
-  // do full 32-byte loads, but we want them to overlap by 8 bytes; we also
-  // want eight bytes of slop on the last chunk.
-  //
-  // There are two cases: either data.len() % 24 >= 8, or not; in the former
-  // case, we can load every full chunk with a full load, but in the latter we
-  // need an extra case to load less than 24 bytes.
-  //
-  // There is also a third, extra case where data.len() < 32, in which case
-  // we need to not do pointer arithmetic below.
   let mut start = data.as_ptr();
-  let end = unsafe {
-    if data.len() % n3q >= (N - n3q) {
-      start.add(data.len() - data.len() % n3q)
-    } else if data.len() < N {
-      start
-    } else {
-      start.add(data.len() - data.len() % n3q - n3q)
-    }
-  };
 
-  while start != end {
-    let chunk = unsafe { std::slice::from_raw_parts(start, N) };
-    let encoded = simd::encode(Simd::from_slice(chunk));
+  // Only n3q input bytes are processed per step.
+  // Use a larger window to enable full SIMD loads.
+  // Move the start pointer to the end of the processed input bytes (not
+  // the end of the window), so that the remainder is processed correctly.
+  for chunk in data.array_windows().step_by(n3q) {
+    start = chunk[..n3q].as_ptr_range().end;
+
+    let encoded = simd::encode(Simd::from_array(*chunk));
 
     unsafe {
-      start = start.add(n3q);
-
       raw_out.cast::<Simd<u8, N>>().write_unaligned(encoded);
       raw_out = raw_out.add(N);
     }
