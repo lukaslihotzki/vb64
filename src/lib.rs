@@ -112,8 +112,7 @@ where
 
   let rest = chunks.remainder();
   if !rest.is_empty() {
-    let (decoded, ok) =
-      simd::decode(unsafe { read_slice_padded::<N, b'A'>(rest) });
+    let (decoded, ok) = simd::decode(read_slice_padded::<N, b'A'>(rest));
     failed |= !ok;
 
     unsafe {
@@ -171,7 +170,7 @@ where
     std::slice::from_raw_parts(start, end.offset_from(start) as usize)
   };
   for chunk in remainder.chunks(n3q) {
-    let encoded = simd::encode(unsafe { read_slice_padded::<N, 0>(chunk) });
+    let encoded = simd::encode(read_slice_padded::<N, 0>(chunk));
 
     unsafe {
       raw_out.cast::<Simd<u8, N>>().write_unaligned(encoded);
@@ -205,18 +204,16 @@ fn encoded_len(input: usize) -> usize {
 /// if `slice` is too short.
 ///
 /// This is approximately 2-3x faster than `Simd::gather_or` on AVX2.
-///
-/// # Safety
-///
-/// `slice.len()` must be within `1..N`.
 #[inline(always)]
-unsafe fn read_slice_padded<const N: usize, const Z: u8>(
-  slice: &[u8],
-) -> Simd<u8, N>
+fn read_slice_padded<const N: usize, const Z: u8>(slice: &[u8]) -> Simd<u8, N>
 where
   LaneCount<N>: SupportedLaneCount,
 {
   let mut buf = [Z; N];
+
+  if slice.is_empty() {
+    return buf.into();
+  }
 
   // Load a bunch of big 16-byte chunks. This should select "load vector"
   // instructions.
