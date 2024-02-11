@@ -167,16 +167,13 @@ where
   }
 
   let end = data.as_ptr_range().end;
-  while start < end {
-    let chunk = unsafe {
-      let rest = end.offset_from(start) as usize;
-      std::slice::from_raw_parts(start, rest.min(n3q))
-    };
+  let remainder = unsafe {
+    std::slice::from_raw_parts(start, end.offset_from(start) as usize)
+  };
+  for chunk in remainder.chunks(n3q) {
     let encoded = simd::encode(unsafe { read_slice_padded::<N, 0>(chunk) });
 
     unsafe {
-      start = start.add(chunk.len());
-
       raw_out.cast::<Simd<u8, N>>().write_unaligned(encoded);
       raw_out = raw_out.add(encoded_len(chunk.len()));
     }
