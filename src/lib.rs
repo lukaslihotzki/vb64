@@ -101,8 +101,7 @@ where
   let mut chunks = data.array_chunks();
   let mut failed = Simd::splat(0);
   for chunk in &mut chunks {
-    let (decoded, invalid) = simd::decode(Simd::from_array(*chunk));
-    failed |= invalid;
+    let decoded = simd::decode(Simd::from_array(*chunk), &mut failed);
 
     unsafe {
       raw_out.cast::<Simd<u8, N>>().write_unaligned(decoded);
@@ -112,8 +111,7 @@ where
 
   let rest = chunks.remainder();
   if !rest.is_empty() {
-    let (decoded, invalid) = simd::decode(read_slice_padded::<N, b'A'>(rest));
-    failed |= invalid;
+    let decoded = simd::decode(read_slice_padded::<N, b'A'>(rest), &mut failed);
 
     unsafe {
       raw_out.cast::<Simd<u8, N>>().write_unaligned(decoded);

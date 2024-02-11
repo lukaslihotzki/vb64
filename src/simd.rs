@@ -10,9 +10,9 @@ use crate::util::invert_index;
 use crate::util::tiled;
 
 /// Decodes `ascii` as base64. Returns the results of the decoding in the low
-/// 3/4 of the returned vector, as well as a vector that is zero on success.
+/// 3/4 of the returned vector. `invalid` is made non-zero if decoding fails.
 #[inline]
-pub fn decode<const N: usize>(ascii: Simd<u8, N>) -> (Simd<u8, N>, Simd<u8, N>)
+pub fn decode<const N: usize>(ascii: Simd<u8, N>, invalid: &mut Simd<u8, N>) -> Simd<u8, N>
 where
   LaneCount<N>: SupportedLaneCount,
 {
@@ -94,7 +94,7 @@ where
 
   let lo = swizzle::<16, N>(LO_LUT, ascii & Simd::splat(0x0f));
   let hi = swizzle::<16, N>(HI_LUT, ascii >> Simd::splat(4));
-  let invalid = lo & hi;
+  *invalid |= lo & hi;
 
   // Now we need to shift everything a little bit, since each byte has two high
   // bits it shouldn't that we need to delete. One thing we can do is to split
@@ -139,7 +139,7 @@ where
 
   let output = swizzle!(N; decoded_chunks, array!(N; |i| i + i / 3));
 
-  (output, invalid)
+  output
 }
 
 /// Encodes the low 3/4 bytes of `data` as base64. The high quarter of the
