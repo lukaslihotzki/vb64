@@ -136,11 +136,16 @@ where
   // u8 shuffle:
   //  bbaaaaaa ccccbbbb ddddddcc ffeeeeee ggggffff hhhhhhgg ........ ........
 
-  let blocks: Simd<u32, {N/4}> = Simd::from_be_bytes(Simd::from_array(*sextets.as_array()));
+  /*let blocks: Simd<u32, {N/4}> = Simd::from_be_bytes(Simd::from_array(*sextets.as_array()));
   let shift_d: Simd<u8, N> = blocks.to_be_bytes();
   let shift_c: Simd<u8, N> = (blocks >> 2).to_be_bytes();
   let shift_b: Simd<u8, N> = (blocks >> 4).to_be_bytes();
-  let shift_a: Simd<u8, N> = (blocks >> 6).to_be_bytes();
+  let shift_a: Simd<u8, N> = (blocks >> 6).to_be_bytes();*/
+  let blocks: Simd<u32, {N/4}> = Simd::from_le_bytes(Simd::from_array(*sextets.as_array()));
+  let shift_d: Simd<u8, N> = (blocks >> 24).to_be_bytes();
+  let shift_c: Simd<u8, N> = (blocks >> 10).to_be_bytes();
+  let shift_b: Simd<u8, N> = (blocks << 4).to_be_bytes();
+  let shift_a: Simd<u8, N> = (blocks << 18).to_be_bytes();
   let shift_ac = concat_swizzle!(N; shift_a, shift_c, array!(N; |i| i + [0, 0, N, N][i % 4]));
   let shift_bd = concat_swizzle!(N; shift_b, shift_d, array!(N; |i| i + [N, 0, 0, N][i % 4]));
   let mask: Simd<u8, N> = tiled(&[0x00, 0xfc, 0x0f, 0xc0]);
