@@ -142,16 +142,16 @@ where
   let shift_b: Simd<u8, N> = (blocks >> 4).to_be_bytes();
   let shift_a: Simd<u8, N> = (blocks >> 6).to_be_bytes();*/
   let blocks: Simd<u32, {N/4}> = Simd::from_le_bytes(Simd::from_array(*sextets.as_array()));
-  let shift_d: Simd<u8, N> = (blocks >> 24).to_be_bytes();
-  let shift_c: Simd<u8, N> = (blocks >> 10).to_be_bytes();
-  let shift_b: Simd<u8, N> = (blocks << 4).to_be_bytes();
-  let shift_a: Simd<u8, N> = (blocks << 18).to_be_bytes();
-  let shift_ac = concat_swizzle!(N; shift_a, shift_c, array!(N; |i| i + [0, 0, N, N][i % 4]));
+  let shift_d: Simd<u8, N> = (blocks >> 24).to_le_bytes();
+  let shift_c: Simd<u8, N> = (blocks >> 10).to_le_bytes();
+  let shift_b: Simd<u8, N> = (blocks << 4).to_le_bytes();
+  let shift_a: Simd<u8, N> = (blocks << 18).to_le_bytes();
+  let shift_ac = concat_swizzle!(N; shift_a, shift_c, array!(N; |i| i + [N, N, 0, 0][i % 4]));
   let shift_bd = concat_swizzle!(N; shift_b, shift_d, array!(N; |i| i + [N, 0, 0, N][i % 4]));
-  let mask: Simd<u8, N> = tiled(&[0x00, 0xfc, 0x0f, 0xc0]);
+  let mask: Simd<u8, N> = tiled(&[0xc0, 0x0f, 0xfc, 0x00]);
   let decoded_chunks = shift_ac & mask | shift_bd & !mask;
 
-  swizzle!(N; decoded_chunks, array!(N; |i| i + i / 3 + 1))
+  swizzle!(N; decoded_chunks, array!(N; |i| i / 3 * 4 + 2 - (i % 3)))
 }
 
 /// Encodes the low 3/4 bytes of `data` as base64. The high quarter of the
