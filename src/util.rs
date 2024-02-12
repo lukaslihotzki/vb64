@@ -95,3 +95,20 @@ macro_rules! swizzle {
     Swz::concat_swizzle($x, Simd::splat(0))
   }};
 }
+
+/// Like std::simd::swizzle!, but where the static indexing vector can depend
+/// on a const parameter, e.g. an `array!()` call.
+macro_rules! concat_swizzle {
+  ($N:ident; $x:expr, $y:expr, $index:expr) => {{
+    use std::simd::*;
+    struct Swz;
+    impl<const $N: usize> Swizzle<$N> for Swz
+    where
+      LaneCount<$N>: SupportedLaneCount,
+    {
+      const INDEX: [usize; $N] = $index;
+    }
+
+    Swz::concat_swizzle($x, $y)
+  }};
+}

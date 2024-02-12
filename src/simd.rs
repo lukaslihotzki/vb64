@@ -5,6 +5,7 @@ use std::simd::prelude::*;
 use std::simd::LaneCount;
 use std::simd::SimdElement;
 use std::simd::SupportedLaneCount;
+use std::simd::ToBytes;
 
 use crate::util::invert_index;
 use crate::util::tiled;
@@ -15,6 +16,8 @@ use crate::util::tiled;
 pub fn decode<const N: usize>(ascii: Simd<u8, N>, invalid: &mut Simd<u8, N>) -> Simd<u8, N>
 where
   LaneCount<N>: SupportedLaneCount,
+  LaneCount<{N/4}>: SupportedLaneCount,
+  Simd<u32, {N/4}>: ToBytes<Bytes = Simd<u8, N>>,
 {
   // We need to convert each ASCII octet into a sextet, according to this match:
   //
@@ -107,8 +110,10 @@ where
   // little-endian.)
   //
   // start:
-  //  aaaaaa.. bbbbbb.. cccccc.. dddddd.. eeeeee.. ffffff.. gggggg.. hhhhhh..
-  //
+  //  Aaaaaa.. Bbbbbb.. Cccccc.. Dddddd.. eeeeee.. ffffff.. gggggg.. hhhhhh..
+  //  ..aaaaaa ..bbbbbb ..cccccc ..dddddd ..eeeeee ..ffffff ..gggggg ..hhhhhh
+  //  ........ aaaaaabb bbbbcccc ccdddddd
+  // 00000000 aaaaaabb bbbbcccc ccdddddd
   // zext to u16:
   //  aaaaaa.......... bbbbbb.......... cccccc.......... dddddd..........
   //  eeeeee.......... ffffff.......... gggggg.......... hhhhhh..........
@@ -131,15 +136,17 @@ where
   // u8 shuffle:
   //  bbaaaaaa ccccbbbb ddddddcc ffeeeeee ggggffff hhhhhhgg ........ ........
 
-  let shifted = sextets.cast::<u16>() << tiled(&[2, 4, 6, 8]);
+  let blocks: Simd<u32, {N/4}> = Simd::from_be_bytes(Simd::from_array(*sextets.as_array()));
+  let shift_d: Simd<u8, N> = blocks.to_be_bytes();
+  let shift_c: Simd<u8, N> = (blocks >> 2).to_be_bytes();
+  let shift_b: Simd<u8, N> = (blocks >> 4).to_be_bytes();
+  let shift_a: Simd<u8, N> = (blocks >> 6).to_be_bytes();
+  let shift_ac = concat_swizzle!(N; shift_a, shift_c, array!(N; |i| i + [0, 0, N, N][i % 4]));
+  let shift_bd = concat_swizzle!(N; shift_b, shift_d, array!(N; |i| i + [N, 0, 0, N][i % 4]));
+  let mask: Simd<u8, N> = tiled(&[0x00, 0xfc, 0x0f, 0xc0]);
+  let decoded_chunks = shift_ac & mask | shift_bd & !mask;
 
-  let lo = shifted.cast::<u8>();
-  let hi = (shifted >> Simd::splat(8)).cast::<u8>();
-  let decoded_chunks = lo | hi.rotate_elements_left::<1>();
-
-  let output = swizzle!(N; decoded_chunks, array!(N; |i| i + i / 3));
-
-  output
+  swizzle!(N; decoded_chunks, array!(N; |i| i + i / 3 + 1))
 }
 
 /// Encodes the low 3/4 bytes of `data` as base64. The high quarter of the

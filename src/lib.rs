@@ -35,6 +35,7 @@
 #![doc = concat!("[graph-png]: data:image/png;base64,", include_str!("../images/graph.png.base64"))]
 #![feature(array_chunks)]
 #![feature(array_windows)]
+#![feature(generic_const_exprs)]
 #![feature(portable_simd)]
 
 use std::simd::LaneCount;
@@ -77,12 +78,16 @@ pub fn encode_to(data: &[u8], out: &mut Vec<u8>) {
   encode_tunable::<16>(data, out)
 }
 
+use std::simd::ToBytes;
+
 fn decode_tunable<const N: usize>(
   data: &[u8],
   out: &mut Vec<u8>,
 ) -> Result<(), Error>
 where
   LaneCount<N>: SupportedLaneCount,
+  LaneCount<{N/4}>: SupportedLaneCount,
+  Simd<u32, {N/4}>: ToBytes<Bytes = Simd<u8, N>>,
 {
   assert!(N % 4 == 0);
 
