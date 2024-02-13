@@ -69,7 +69,7 @@ pub fn decode_to(data: &[u8], out: &mut Vec<u8>) -> Result<(), Error> {
   if cfg!(target_feature = "avx2") {
     decode_tunable::<32>(data, out)
   } else {
-    decode_tunable::<16>(data, out)
+    decode_tunable::<32>(data, out)
   }
 }
 
@@ -79,6 +79,7 @@ pub fn encode_to(data: &[u8], out: &mut Vec<u8>) {
 }
 
 use std::simd::ToBytes;
+use std::arch::x86_64::__m256i;
 
 fn decode_tunable<const N: usize>(
   data: &[u8],
@@ -88,6 +89,8 @@ where
   LaneCount<N>: SupportedLaneCount,
   LaneCount<{N/4}>: SupportedLaneCount,
   Simd<u32, {N/4}>: ToBytes<Bytes = Simd<u8, N>>,
+  __m256i: From<Simd<u8, N>>,
+  Simd<u8, N>: From<__m256i>,
 {
   assert!(N % 4 == 0);
 

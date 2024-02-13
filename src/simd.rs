@@ -1,6 +1,20 @@
 //! Core SIMD implementation.
 
 use core::fmt;
+use std::arch::x86_64::__m256i;
+use std::arch::x86_64::_mm256_and_si256;
+use std::arch::x86_64::_mm256_andnot_si256;
+use std::arch::x86_64::_mm256_blend_epi16;
+use std::arch::x86_64::_mm256_blendv_epi8;
+use std::arch::x86_64::_mm256_or_si256;
+use std::arch::x86_64::_mm256_permutevar8x32_epi32;
+use std::arch::x86_64::_mm256_set1_epi32;
+use std::arch::x86_64::_mm256_set_epi32;
+use std::arch::x86_64::_mm256_set_epi8;
+use std::arch::x86_64::_mm256_setr_epi32;
+use std::arch::x86_64::_mm256_shuffle_epi8;
+use std::arch::x86_64::_mm256_slli_epi32;
+use std::arch::x86_64::_mm256_srli_epi32;
 use std::simd::prelude::*;
 use std::simd::LaneCount;
 use std::simd::SimdElement;
@@ -18,6 +32,8 @@ where
   LaneCount<N>: SupportedLaneCount,
   LaneCount<{N/4}>: SupportedLaneCount,
   Simd<u32, {N/4}>: ToBytes<Bytes = Simd<u8, N>>,
+  __m256i: From<Simd<u8, N>>,
+  Simd<u8, N>: From<__m256i>,
 {
   // We need to convert each ASCII octet into a sextet, according to this match:
   //
@@ -136,22 +152,20 @@ where
   // u8 shuffle:
   //  bbaaaaaa ccccbbbb ddddddcc ffeeeeee ggggffff hhhhhhgg ........ ........
 
-  /*let blocks: Simd<u32, {N/4}> = Simd::from_be_bytes(Simd::from_array(*sextets.as_array()));
-  let shift_d: Simd<u8, N> = blocks.to_be_bytes();
-  let shift_c: Simd<u8, N> = (blocks >> 2).to_be_bytes();
-  let shift_b: Simd<u8, N> = (blocks >> 4).to_be_bytes();
-  let shift_a: Simd<u8, N> = (blocks >> 6).to_be_bytes();*/
-  let blocks: Simd<u32, {N/4}> = Simd::from_le_bytes(Simd::from_array(*sextets.as_array()));
-  let shift_d: Simd<u8, N> = (blocks >> 24).to_le_bytes();
-  let shift_c: Simd<u8, N> = (blocks >> 10).to_le_bytes();
-  let shift_b: Simd<u8, N> = (blocks << 4).to_le_bytes();
-  let shift_a: Simd<u8, N> = (blocks << 18).to_le_bytes();
-  let shift_ac = concat_swizzle!(N; shift_a, shift_c, array!(N; |i| i + [N, N, 0, 0][i % 4]));
-  let shift_bd = concat_swizzle!(N; shift_b, shift_d, array!(N; |i| i + [N, 0, 0, N][i % 4]));
-  let mask: Simd<u8, N> = tiled(&[0xc0, 0x0f, 0xfc, 0x00]);
-  let decoded_chunks = shift_ac & mask | shift_bd & !mask;
+  let blocks: __m256i = sextets.into();
+  let shift_d = unsafe { _mm256_srli_epi32::<24>(blocks) };
+  let shift_c = unsafe { _mm256_srli_epi32::<10>(blocks) };
+  let shift_b = unsafe { _mm256_slli_epi32::<4>(blocks) };
+  let shift_a = unsafe { _mm256_slli_epi32::<18>(blocks) };
+  let shift_ac = unsafe { _mm256_blend_epi16::<0b10101010>(shift_c, shift_a) };
+  let shift_bd = unsafe { _mm256_blendv_epi8(shift_d, shift_b, _mm256_set1_epi32(0x00ffff00)) };
+  let mask = unsafe { _mm256_set1_epi32(0x00fc0fc0) };
+  let decoded_chunks = unsafe { _mm256_or_si256(_mm256_and_si256(mask, shift_ac), _mm256_andnot_si256(mask, shift_bd)) };
 
-  swizzle!(N; decoded_chunks, array!(N; |i| i / 3 * 4 + 2 - (i % 3)))
+  let intralane = unsafe { _mm256_shuffle_epi8(decoded_chunks, Simd::from_array([2i8, 1, 0, 6, 5, 4, 10, 9, 8, 14, 13, 12, -1, -1, -1, -1, 2, 1, 0, 6, 5, 4, 10, 9, 8, 14, 13, 12, -1, -1, -1, -1]).into()) };
+  let interlane = unsafe { _mm256_permutevar8x32_epi32(intralane, Simd::from_array([0i32, 1, 2, 4, 5, 6, 3, 7]).into()) };
+
+  interlane.into()
 }
 
 /// Encodes the low 3/4 bytes of `data` as base64. The high quarter of the
