@@ -162,7 +162,8 @@ where
   let mask = unsafe { _mm256_set1_epi32(0x00fc0fc0) };
   let decoded_chunks = unsafe { _mm256_or_si256(_mm256_and_si256(mask, shift_ac), _mm256_andnot_si256(mask, shift_bd)) };
 
-  let intralane = unsafe { _mm256_shuffle_epi8(decoded_chunks, Simd::from_array([2i8, 1, 0, 6, 5, 4, 10, 9, 8, 14, 13, 12, -1, -1, -1, -1, 2, 1, 0, 6, 5, 4, 10, 9, 8, 14, 13, 12, -1, -1, -1, -1]).into()) };
+  const X: i8 = 4; // -1 is the obvious choice for zero, but it doesn't optimize as well.
+  let intralane = unsafe { _mm256_shuffle_epi8(decoded_chunks, Simd::from_array([2i8, 1, 0, 6, 5, 4, 10, 9, 8, 14, 13, 12, X, X, X, X, 2, 1, 0, 6, 5, 4, 10, 9, 8, 14, 13, 12, X, X, X, X]).into()) };
   let interlane = unsafe { _mm256_permutevar8x32_epi32(intralane, Simd::from_array([0i32, 1, 2, 4, 5, 6, 3, 7]).into()) };
 
   interlane.into()
